@@ -1,6 +1,6 @@
 ---
 title: "CTA-ED Exercise 3: Comparison and complexity"
-author: "[name here]"
+author: "Lin Geng"
 date: "2/28/2024"
 output: html_document
 ---
@@ -74,9 +74,8 @@ tweets_corpus
 We are now ready to reformat the data into a document feature matrix.
 
 ```{r}
-dfmat <- dfm(tokens(tweets_corpus),
-             remove_punct = TRUE, 
-             remove = stopwords("english"))
+dfmat <- dfm(tokens(tweets_corpus, remove_punct = TRUE)) %>%
+  dfm_remove(pattern = stopwords("english"))
 
 dfmat
 ```
