@@ -132,7 +132,8 @@ We first convert the `textstat_simil()` output to a matrix.
 ```{r}
 
 cosmat <- as.matrix(cos_sim) #convert to a matrix
-  
+
+
 ```
 
 And we can see that the 23rd row of this matrix contains the similarity measures with the Theresa May tweets. 
@@ -173,6 +174,7 @@ Combining these steps into a single `for` loop, we can see how our different sim
 #specify different similarity measures to explore
 methods <- c("correlation", "cosine", "dice", "edice")
 
+
 #create empty dataframe
 testdf_all <- data.frame()
 
@@ -206,10 +208,12 @@ for (i in seq_along(methods)) {
   
 }
 
+
 #create variable (for viz only) that is mean of similarity scores for each MP
 testdf_all <- testdf_all %>%
   group_by(username) %>%
   mutate(mean_sim = mean(corr_may))
+testdf_all
 
 ggplot(testdf_all) +
   geom_point( aes(x=reorder(username, -mean_sim), y= corr_may, color = method)) + 
@@ -236,7 +240,7 @@ speeches  <- readRDS(gzcon(url("https://github.com/cjbarrie/CTA-ED/blob/main/dat
 
 And we can take a look at what the data contains below.
 
-```{r}
+```{r results='hide'}
 
 head(speeches)
 
@@ -295,5 +299,162 @@ ggplot(sum_corpus, aes(x=speaker, y=mean)) +
 ## Exercises
 
 1. Compute distance measures such as "euclidean" or "manhattan" for the MP tweets as above, comparing between tweets by MPs and tweets by PM, Theresa May. 
+
+```{r}
+#specify measures
+methods_dist <- c("euclidean", "manhattan")
+
+distdf_all <- data.frame()
+
+for (i in seq_along(methods_dist)) {
+  
+  dis_method <- methods_dist[[i]]
+  
+  text_dist <- dfmat %>%
+    dfm_group(groups = username) %>%
+    textstat_dist(margin = "documents", method = dis_method) 
+  
+  textm_dist <- as.matrix(text_dist) 
+  
+  distdf <- as.data.frame(textm_dist[23, c(1:22, 24)])
+  
+  colnames(distdf) <- "dist_may"
+  
+  distdf <- tibble::rownames_to_column(distdf, "username")
+  
+  distdf$method <- dis_method
+
+  distdf_all <- rbind(distdf_all, distdf)  
+  
+}
+
+
+distdf_all <- distdf_all %>%
+  group_by(username) %>%
+  mutate(mean_dist = mean(dist_may))
+distdf_all
+
+
+
+ggplot(distdf_all) +
+  geom_point( aes(x=reorder(username, -mean_dist), y= dist_may, color = method)) + 
+  coord_flip() +
+  xlab("MP username") +
+  ylab("Distance score") + 
+  theme_minimal()
+
+```
+
+
 2. Estimate at least three other complexity measures for the EU speeches as above. Consider how the results compare to the Flesch-Kincaid measure used in the article by @schoonvelde_liberals_2019.
+
+```{r}
+speeches_raw  <- readRDS(gzcon(url("https://github.com/cjbarrie/CTA-ED/blob/main/data/comparison-complexity/speeches.rds?raw=true")))
+
+
+speeches_Flesch.Kincaid <- speeches_raw %>% 
+   mutate(method_score = textstat_readability(text, "Flesch.Kincaid")$Flesch.Kincaid) %>%
+   mutate(method = "Flesch.Kincaid")
+
+speeches_FOG <- speeches_raw %>% 
+   mutate(method_score = textstat_readability(text, "FOG")$FOG) %>%
+   mutate(method = "FOG")
+
+speeches_SMOG <- speeches_raw %>% 
+   mutate(method_score = textstat_readability(text, "SMOG")$SMOG) %>%
+   mutate(method = "SMOG")
+
+speeches_ARI <- speeches_raw %>% 
+   mutate(method_score = textstat_readability(text, "ARI")$ARI) %>%
+   mutate(method = "ARI")
+
+sum_complex <- rbind(speeches_Flesch.Kincaid,speeches_ARI,speeches_FOG,speeches_SMOG)
+
+sum_complex <- sum_complex %>%
+  group_by(speaker, method) %>%
+  summarise(mean = mean(method_score, na.rm=TRUE),
+         SD=sd(method_score, na.rm=TRUE),
+         N=length(speaker))
+
+sum_complex$se <- sum_complex$SD / sqrt(sum_complex$N)
+sum_complex$min <- sum_complex$mean - 1.96*sum_complex$se
+sum_complex$max <- sum_complex$mean + 1.96*sum_complex$se
+
+head(sum_complex)
+
+ggplot(sum_complex, aes(x = speaker, y = mean, fill = method)) +
+  geom_bar(stat = "identity", 
+           position = position_dodge(width = 0.9),
+           width = 0.8) + 
+  geom_errorbar(aes(ymin = min, ymax = max),
+                position = position_dodge(width = 0.9),
+                width = 0.3) +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set2",
+                    name = "Complexity Method") +
+  labs(x = "", 
+       y = "Mean Complexity") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        panel.grid.major.y = element_blank()) +
+  scale_y_continuous(limits = c(0, 20),
+                     breaks = seq(0, 20, 2))
+```
+
 3. (Advanced---optional) Estimate similarity scores between the MP tweets and the PM tweets for each week contained in the data. Plot the results. 
+
+#didn't complete
+
+```{r eval = FALSE}
+tweets <- tweets %>%
+  mutate(week = lubridate::week(date))
+head(tweets)
+
+weekly_sim_all <- data.frame()
+
+tweets_corpus
+
+
+for(w in unique(tweets$week)){
+  
+  
+  weekly_data <- tweets %>% filter(week == w)
+  
+  weekly_corpus <- corpus(weekly_data, text_field = "tweet")
+  
+  docvars(weekly_corpus, "username") <- weekly_data$username
+  
+  weekly_dfm <- dfm(tokens(weekly_corpus, remove_punct = TRUE)) %>%
+    dfm_remove(pattern = stopwords("english"))
+  
+  cosmat_weekly <- weekly_dfm %>% 
+    dfm_group(groups = username) %>% 
+    textstat_simil(margin = "documents", method = "cosine")
+  
+  cosmat_weeklym <- as.matrix(cosmat_weekly) 
+  
+  if ("theresa_may" %in% rownames(cosmat_weeklym)) {
+  cosmat_weeklydf <- cosmat_weeklym["theresa_may", ]  
+  cosmat_weeklydf <- cosmat_weeklydf[names(cosmat_weeklydf) != "theresa_may"]  
+  cosmat_weeklydf <- as.data.frame(cosmat_weeklydf)
+  
+  colnames(cosmat_weeklydf) <- "cos_may"
+  cosmat_weeklydf <- tibble::rownames_to_column(cosmat_weeklydf, "username")
+  cosmat_weeklydf$week <- w
+  
+  weekly_sim_all <- rbind(weekly_sim_all, cosmat_weeklydf)
+} else {
+  message(paste( w, "no TM"))
+}
+  
+  colnames(cosmat_weeklydf) <- "cos_may"
+  
+  cosmat_weeklydf <- tibble::rownames_to_column(cosmat_weeklydf, "username")
+  
+  cosmat_weeklydf$week <- w
+  
+  weekly_sim_all <- rbind(weekly_sim_all, cosmat_weeklydf)
+}
+
+```
+
